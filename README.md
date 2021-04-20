@@ -1,6 +1,6 @@
 # gym-cmapf
 
-'gym-cmapf' is a [OpenAI Gym](https://github.com/openai/gym) environment for
+`gym-cmapf` is a [OpenAI Gym](https://github.com/openai/gym) environment for
 multi-agent reinforcement learning-based algorithms.
 
 The Connected Multi-Agent Path Finding problem is a variant of the Multi-Agent
