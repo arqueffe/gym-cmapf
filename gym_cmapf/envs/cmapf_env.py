@@ -87,6 +87,7 @@ class CMAPFEnv(gym.Env):
 
   def __init__(self, num_agents, world, starts, goals, agents):
 
+    # Type and Value checking
     if num_agents != int(num_agents) or num_agents <= 0:
       raise ValueError('`num_agents` should be a positive integer: got {!r}'.format(num_agents))
 
@@ -102,50 +103,57 @@ class CMAPFEnv(gym.Env):
     if type(agents) != list or len(agents) != num_agents or not all(isinstance(x, Agent) for x in agents):
       raise ValueError('`agents` should be list of Agent: got {!r}'.format(agents))
 
-    self._num_agents = num_agents
-    self._world = world
-    self._starts = starts
-    self._goals = goals
-    self._agents = agents
+    # Initialization
+    self._num_agents  = num_agents
+    self._world       = world
+    self._starts      = starts
+    self._goals       = goals
+    self._agents      = agents
 
-    self.current = starts
+    self._current     = starts
 
-  def step(self, action):
+  @contract
+  def step(self, jointAction):
+    """
+        :param jointAction: joint action of the agents
+        :type jointAction: list[>0](int)
 
-    state = self.current.copy()
+        :return: global state, observations, rewards, done status
+        :rtype: tuple(array,list[N],list[N],list[N]),N>0
+    """
+    state = self._current.copy()
 
-    if type(action) != list or len(action) != self._num_agents or not all(isinstance(x, Agent) for x in self._agents):
-      raise ValueError('`action` should be list of actions: got {!r}'.format(action))
+    if type(jointAction) != list or len(jointAction) != self._num_agents or not all(isinstance(x, Agent) for x in self._agents):
+      raise ValueError('`action` should be list of actions: got {!r}'.format(jointAction))
 
     for agt in self._agents:
-      pos = self.current[agt.id] + actionToDirection[action[agt.id]]
+      pos = self._current[agt.id] + actionToDirection[jointAction[agt.id]]
       if pos[0] >= 0 and pos[0] < self._world.height and pos[1] >= 0 and pos[1] < self._world.width:
         if self._world.isFree(pos):
           state[agt.id] = pos
 
     obs = [agt.observe(state) for agt in self._agents]
 
-    rewards = [agt.reward(self.current, state) for agt in self._agents]
+    rewards = [agt.reward(self._current, state) for agt in self._agents]
 
     done = [self._goals[agt.id][0] == state[agt.id][0] and self._goals[agt.id][1] == state[agt.id][1] for agt in self._agents]
 
-    self.current = state
+    self._current = state
 
-    return self.current, obs, rewards, done
+    return self._current, obs, rewards, done
 
   def reset(self):
-    self.current = self._starts
+    self._current = self._starts
 
   def render(self, mode='console'):
 
     if mode == 'console':
-
       display = ""
       done = False
       for x in range(0, self._world.height):
         for y in range(0, self._world.width):
           for agt in self._agents:
-            if x == self.current[agt.id][0] and y == self.current[agt.id][1]:
+            if x == self._current[agt.id][0] and y == self._current[agt.id][1]:
               display += str(agt.id)
               done = True
               break
@@ -154,7 +162,6 @@ class CMAPFEnv(gym.Env):
           done = False
         if x != self._world.height -1:
           display+='\n'
-
       print(display)
 
   def close(self):
@@ -170,21 +177,28 @@ if __name__ == "__main__":
   s = np.array([(1,1)])
   nb = 1
   cmapf = CMAPFEnv(nb, w, s, np.array([(1,1)]), [BasicAgent(0)])
-  while(1):
+  close = False
+  while not close:
     cmapf.render()
     l = []
     for agt in range(0, nb):
       valid = False
       intInp = -1
-      while not valid:
+      while not valid and not close:
         inp = input('Action of agent {}: '.format(agt))
         try:
           intInp=int(inp)
-          if intInp < 0 or intInp > 4:
-            print("An action is an integer between 0 and 4")
+          print(str(intInp))
+          if intInp < -1 or intInp > 4:
+            print("An action is an integer between 0 and 4. (-1 to quit)")
           else:
-            valid = True
+            if intInp == -1:
+              close = True
+            else:
+              valid = True
         except ValueError:
-          print("An action is an integer between 0 and 4")
-      l.append(intInp)
-    cmapf.step(l)
+          print("An action is an integer between 0 and 4. (-1 to quit)")
+      if valid:
+        l.append(intInp)
+    if not close:
+      cmapf.step(l)
