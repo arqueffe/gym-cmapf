@@ -11,20 +11,23 @@ import numpy as np
 
 from contracts import contract, ContractsMeta, with_metaclass
 from abc import abstractmethod
-from world import World
+from world import World, Cell
 
-ACTION_COST   = -0.3
-IDLE_COST     = -0.5
-GOAL_REWARD   = 0.0
-FINISH_REWARD = 20.0
+ACTION_COST     = -0.3
+IDLE_COST       = -0.5
+COLLISION_COST  = -2.0
 
-class Action(IntEnum):
+GOAL_REWARD     = 0.0
+FINISH_REWARD   = 20.0
+
+COLLISION_FORBIDDEN = True
+
+class ActionID(IntEnum):
   IDLE = 0
   UP = 1
   DOWN = 2
   LEFT = 3
   RIGHT = 4
-
 
 """
 Setting of the map
@@ -34,13 +37,18 @@ X\Y   0 1 2
     2 # # #
 """
 
+class Action(Cell):
+  def __init__(self, x, y):
+        self._x = x
+        self._y = y
+
 # Direction : (X,Y)
 actionToDirection = {
-  Action.IDLE:  (0,0),
-  Action.UP:    (-1,0),
-  Action.DOWN:  (1,0),
-  Action.LEFT:  (0,-1),
-  Action.RIGHT: (0,1)
+  ActionID.IDLE:  Action(0,0),
+  ActionID.UP:    Action(-1,0),
+  ActionID.DOWN:  Action(1,0),
+  ActionID.LEFT:  Action(0,-1),
+  ActionID.RIGHT: Action(0,1)
 }
 
 directionToAction = {
@@ -94,10 +102,10 @@ class CMAPFEnv(gym.Env):
     if type(world) != World or world.isEmpty():
       raise ValueError('`world` should be a non-empty World: got {!r}'.format(world))
 
-    if type(starts) != np.ndarray or len(starts) != num_agents or len(starts.shape) != 2:
+    if type(starts) != np.ndarray or len(starts) != num_agents or len(starts.shape) != 1:
       raise ValueError('`starts` should be numpy array of one dimension: got {!r}'.format(starts))
 
-    if type(goals) != np.ndarray or len(goals) != num_agents or len(goals.shape) != 2:
+    if type(goals) != np.ndarray or len(goals) != num_agents or len(goals.shape) != 1:
       raise ValueError('`goals` should be numpy array of one dimension: got {!r}'.format(goals))
 
     if type(agents) != list or len(agents) != num_agents or not all(isinstance(x, Agent) for x in agents):
@@ -128,15 +136,33 @@ class CMAPFEnv(gym.Env):
 
     for agt in self._agents:
       pos = self._current[agt.id] + actionToDirection[jointAction[agt.id]]
-      if pos[0] >= 0 and pos[0] < self._world.height and pos[1] >= 0 and pos[1] < self._world.width:
+      if pos.x >= 0 and pos.x < self._world.height and pos.y >= 0 and pos.y < self._world.width:
         if self._world.isFree(pos):
           state[agt.id] = pos
+
+    col = []
+
+    if COLLISION_FORBIDDEN:
+      for a in self._agents:
+        for b in self._agents:
+          if a.id >= b.id:
+            continue
+          # Position Collision
+          if state[a.id] == state[b.id]:
+            state[a.id] = self._current[a.id]
+            state[b.id] = self._current[b.id]
+            col.append([a,b])
+          # Head-on Collision
+          elif state[a.id] == self._current[b.id] and state[b.id] == self._current[a.id]:
+            state[a.id] = self._current[a.id]
+            state[b.id] = self._current[b.id]
+            col.append([a,b])
 
     obs = [agt.observe(state) for agt in self._agents]
 
     rewards = [agt.reward(self._current, state) for agt in self._agents]
 
-    done = [self._goals[agt.id][0] == state[agt.id][0] and self._goals[agt.id][1] == state[agt.id][1] for agt in self._agents]
+    done = [self._goals[agt.id].x == state[agt.id].x and self._goals[agt.id].y == state[agt.id].y for agt in self._agents]
 
     self._current = state
 
@@ -153,12 +179,12 @@ class CMAPFEnv(gym.Env):
       for x in range(0, self._world.height):
         for y in range(0, self._world.width):
           for agt in self._agents:
-            if x == self._current[agt.id][0] and y == self._current[agt.id][1]:
+            if x == self._current[agt.id].x and y == self._current[agt.id].y:
               display += str(agt.id)
               done = True
               break
           if not done:
-            display += self._world.getDisplay((x,y))
+            display += self._world.getDisplay(Cell(x,y))
           done = False
         if x != self._world.height -1:
           display+='\n'
@@ -167,16 +193,15 @@ class CMAPFEnv(gym.Env):
   def close(self):
     super(gym.Env, self).close()
 
-
-
 if __name__ == "__main__":
   global charCount
   charCount = 0
   m = np.array([[1,1,1],[0,0,0],[1,0,1]])
   w = World(m)
-  s = np.array([(1,1)])
-  nb = 1
-  cmapf = CMAPFEnv(nb, w, s, np.array([(1,1)]), [BasicAgent(0)])
+  s = np.array([Cell(1,1), Cell(1,0)])
+  t = np.array([Cell(1,1), Cell(2,0)])
+  nb = 2
+  cmapf = CMAPFEnv(nb, w, s, t, [BasicAgent(0),BasicAgent(1)])
   close = False
   while not close:
     cmapf.render()
