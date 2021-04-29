@@ -13,14 +13,17 @@ from contracts import contract, ContractsMeta, with_metaclass
 from abc import abstractmethod
 from world import World, Cell
 
-ACTION_COST     = -0.3
-IDLE_COST       = -0.5
-COLLISION_COST  = -2.0
-
+# Penalities
+ACTION_COST         = -0.3
+IDLE_COST           = -0.5
+COLLISION_COST      = -2.0
+DISCONNECTION_COST  = -2.0
+# Rewards
 GOAL_REWARD     = 0.0
 FINISH_REWARD   = 20.0
 
 COLLISION_FORBIDDEN = True
+DISCONNECTION_FORBIDDEN = True
 
 class ActionID(IntEnum):
   IDLE = 0
@@ -55,6 +58,9 @@ directionToAction = {
   dir:act for act,dir in actionToDirection.items()
 }
 
+
+
+
 class Agent(with_metaclass(ContractsMeta, object)):
 
   def __init__(self, id):
@@ -68,6 +74,7 @@ class Agent(with_metaclass(ContractsMeta, object)):
   def observe(self, state : 'array'):
     pass
 
+  @abstractmethod
   @contract
   def reward(self, prevState : 'array', nextState : 'array') -> float:
     pass
@@ -158,6 +165,13 @@ class CMAPFEnv(gym.Env):
             state[b.id] = self._current[b.id]
             col.append([a,b])
 
+    disc = False
+
+    if DISCONNECTION_FORBIDDEN:
+      if not self._world.isConnected(state):
+        disc = True
+        state = self._current
+
     obs = [agt.observe(state) for agt in self._agents]
 
     rewards = [agt.reward(self._current, state) for agt in self._agents]
@@ -194,10 +208,8 @@ class CMAPFEnv(gym.Env):
     super(gym.Env, self).close()
 
 if __name__ == "__main__":
-  global charCount
-  charCount = 0
-  m = np.array([[1,1,1],[0,0,0],[1,0,1]])
-  w = World(m)
+  m = np.array([[0,1,1],[0,0,0],[1,0,1]])
+  w = World(m, 2)
   s = np.array([Cell(1,1), Cell(1,0)])
   t = np.array([Cell(1,1), Cell(2,0)])
   nb = 2
