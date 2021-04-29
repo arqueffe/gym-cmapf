@@ -8,6 +8,7 @@ import gym
 from gym import spaces
 
 import numpy as np
+import pygame
 
 from contracts import contract, ContractsMeta, with_metaclass
 from abc import abstractmethod
@@ -24,6 +25,11 @@ FINISH_REWARD   = 20.0
 
 COLLISION_FORBIDDEN = True
 DISCONNECTION_FORBIDDEN = True
+
+SCREEN_SIZE = (600,600)
+
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
 
 class ActionID(IntEnum):
   IDLE = 0
@@ -68,6 +74,7 @@ class Agent(with_metaclass(ContractsMeta, object)):
       raise ValueError('`id` should be a positive integer: got {!r}'.format(id))
 
     self._id = id
+    self._color = (np.random.randint(255), np.random.randint(255), np.random.randint(255))
 
   @abstractmethod
   @contract
@@ -83,6 +90,10 @@ class Agent(with_metaclass(ContractsMeta, object)):
   def id(self):
     return self._id
 
+  @property
+  def color(self):
+    return self._color
+
 class BasicAgent(Agent):
 
   def __init__(self, id):
@@ -97,7 +108,7 @@ class BasicAgent(Agent):
 class CMAPFEnv(gym.Env):
 
   metadata = {
-    'render.modes': ['console']
+    'render.modes': ['console', 'pygame']
   }
 
   def __init__(self, num_agents, world, starts, goals, agents):
@@ -126,6 +137,7 @@ class CMAPFEnv(gym.Env):
     self._agents      = agents
 
     self._current     = starts
+    self._pygameReady = False
 
   @contract
   def step(self, jointAction):
@@ -186,8 +198,12 @@ class CMAPFEnv(gym.Env):
     self._current = self._starts
 
   def render(self, mode='console'):
-
     if mode == 'console':
+      self.__renderToConsole()
+    if mode == 'pygame':
+      self.__renderToPygame()
+
+  def __renderToConsole(self):
       display = ""
       done = False
       for x in range(0, self._world.height):
@@ -204,11 +220,34 @@ class CMAPFEnv(gym.Env):
           display+='\n'
       print(display)
 
+  def __renderToPygame(self):
+    if not self._pygameReady:
+      pygame.init()
+      pygame.display.set_caption('CMAPF Renderer')
+      self._screen = pygame.display.set_mode(SCREEN_SIZE)
+      self._background = pygame.Surface(self._screen.get_size()).convert()
+      self._background.fill((255, 255, 255))
+      self._pygameReady = True
+    ## Draw the maze
+    widthScale = self._screen.get_size()[1] / self._world.width
+    heightScale = self._screen.get_size()[0] / self._world.height
+    scale = max(widthScale, heightScale)
+    font = pygame.font.SysFont(None, int(scale/2))
+    for x in range(0, self._world.height):
+        for y in range(0, self._world.width):
+          pygame.draw.rect(self._screen, self._world.getColor(Cell(x,y)), (y*scale, x*scale, (y+1)*scale, (x+1)*scale))
+          for agt in self._agents:
+            if x == self._current[agt.id].x and y == self._current[agt.id].y:
+              pygame.draw.circle(self._screen, agt.color, (y*scale + scale/2, x*scale + scale/2), scale/4)
+              img = font.render(str(agt.id), True, BLACK)
+              self._screen.blit(img, (y*scale + scale/3, x*scale + scale/3))
+    pygame.display.flip()
+
   def close(self):
     super(gym.Env, self).close()
 
 if __name__ == "__main__":
-  m = np.array([[0,1,1],[0,0,0],[1,0,1]])
+  m = np.array([[0,1,1,0],[0,0,0,0],[1,0,1,1],[1,0,0,0]])
   w = World(m, 2)
   s = np.array([Cell(1,1), Cell(1,0)])
   t = np.array([Cell(1,1), Cell(2,0)])
@@ -216,7 +255,7 @@ if __name__ == "__main__":
   cmapf = CMAPFEnv(nb, w, s, t, [BasicAgent(0),BasicAgent(1)])
   close = False
   while not close:
-    cmapf.render()
+    cmapf.render('pygame')
     l = []
     for agt in range(0, nb):
       valid = False

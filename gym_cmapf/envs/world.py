@@ -196,6 +196,21 @@ class World:
         raise ValueError('Unknown cell type in world at {!r}'.format(pos))
 
     @contract
+    def getColor(self, pos):
+        """
+            :param pos: position
+            :type pos: cell
+
+            :return: the color for the cell
+            :rtype: tuple(int,int,int)
+        """
+        if self._worldMap[pos.x][pos.y] == CellType.FREE:
+            return (255, 255, 255)
+        if self._worldMap[pos.x][pos.y] == CellType.OBSTACLE:
+            return (0, 0, 0)
+        raise ValueError('Unknown cell type in world at {!r}'.format(pos))
+
+    @contract
     def getValue(self, pos):
         """
             :param pos: position
